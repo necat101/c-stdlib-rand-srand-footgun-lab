@@ -1,7 +1,4 @@
-__pycache__/
-*.pyc
-c_harness
+# build artifacts
+c_rand_harness
 *.o
-*.out
-/results_tmp/
-.DS_Store
+__pycache__/

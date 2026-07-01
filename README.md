@@ -1,128 +1,166 @@
 # c-stdlib-rand-srand-footgun-lab
 
-A tiny local correctness and safety lab about C `rand`, `srand`, `RAND_MAX`, hidden RNG state, seeding, modulo bias, `rand_r` availability, and embedded/newlib-style allocation caveats.
+A tiny, reproducible correctness/safety lab about C `rand()`, `srand()`, `RAND_MAX`, hidden RNG state, seeding, modulo bias, `rand_r` availability, and embedded/newlib-style allocation caveats.
 
-The lab uses a generated C harness compiled by a portable compiler (`zig cc`, `cc`, `clang`, or `gcc`) from a non-privileged Linux container. The point is **not** to reproduce newlib's malloc behavior, audit newlib, implement a cryptographic RNG, benchmark production PRNGs, compare every libc, run statistical batteries, or prove production RNG quality.
+**This is a toy local lab – not cryptography, not a statistical RNG test suite, not a newlib reproduction, not an embedded firmware build, not a linker audit.**
 
-The point is to test the Hacker News debate in a tiny reproducible way: rand has hidden process-global state; srand resets that state; same seed repeats a sequence on the local libc but the sequence is implementation-defined; rand is not a CSPRNG; `rand() % n` can be biased; `RAND_MAX` limits matter; `rand_r` makes state explicit if available but is POSIX and not a quality guarantee; libraries that call rand can disturb caller expectations.
+## Hacker News thread access
 
-## Hacker News thread sentiments
+The Hacker News thread at https://news.ycombinator.com/item?id=30942146 ("rand() may call malloc()") was read via the **Hacker News API CLI** (`python3 ./hackernews get-item --id 30942146`) **before** writing this README. A raw thread dump is committed as `hn_30942146.json` (partial, API rate-limited – see `hn_thread_evidence.md`).
 
-This section summarizes the actual HN discussion at https://news.ycombinator.com/item?id=30942146 ("rand() may call malloc()"), accessed via the Hacker News API CLI before writing this README. See `hn_thread_evidence.md` for the audit trail.
+The sentiment summary below reflects the actual HN discussion, not just the linked article title.
 
-The linked article (https://www.thingsquare.com/blog/articles/rand-may-call-malloc/) describes an embedded system with static-only allocation that hit a stack corruption crash traced to `rand()` calling `malloc()`. The cause: newlib configured with reentrancy support, where the reentrant wrapper around `rand()` allocates per-thread RNG state via `malloc()`. A toolchain update switched them to a reentrant newlib build.
+## What Hacker News users were actually debating
 
-HN commenters debated **what the real problem was**:
+The linked article (Thingsquare / Adam Dunkels – OP is `adunk` on HN) describes an embedded IoT system with all-static allocation where `rand()` unexpectedly called `malloc()`, causing a stack corruption crash. The root cause: newlib configured with reentrancy support – to make traditionally non-reentrant C library functions thread-safe, newlib replaces static variables with dynamically-allocated per-thread state. A toolchain update switched their newlib build to one with reentrancy enabled. Their solution: stop using `rand()`, use a project-specific PRNG, and add a build-time tool that detects `malloc()` callers and fails the build.
 
-- **"stop using rand()"** – several commenters (raggi, chrsig) argued rand is bad regardless, and ditching it was the right pragmatic call, though the article's conclusion felt surface-level since the actual bug was newlib's reentrancy layer, not rand itself.
-- **"stop using newlib"** – marcan_42 argued that in tight embedded systems with custom memory management you shouldn't have malloc at all, and newlib is too bloated; roll your own libc subset (e.g. PDClib pieces), use freestanding C. Others (klodolph, toast0, monocasa) pushed back: "roll your own" is a trap, it's easier to audit what newlib pulls in; you can pick pieces out of FreeBSD libc / PDClib / picolibc as needed.
-- **"turn off reentrancy support"** – kevin_thibedeau, noobermin: newlib can be configured without reentrancy; that's the real fix if you want to keep newlib.
-- **"remove malloc from the link / catch malloc callers in CI"** – zgs, MarkSweep, renox: if you're doing static-only allocation, why is malloc linked at all? Whitelist malloc callers in CI, catch this at link time. SAI_Peregrinus countered: sometimes you want dynamic allocation at startup only, then never again – in that design you can't just remove malloc.
-- **"use a project-specific PRNG"** – broadly agreed as good practice. Several PRNG suggestions: PCG (SeanLuke criticized, jwmerrill defended), jart's lemur64 LCG, MWC, xoroshiro64s.
+HN commenters debated **where the real problem was**:
 
-Other themes from the thread:
+- **"Stop using rand"** – `rand()` is bad anyway, never use it for anything serious (raggi, adrian_b). None of `rand`, `rand_r`, `srand`, `random`, `srandom` should be used in remotely serious RNG applications. Use a proper PRNG.
+- **"Stop using newlib"** – If you're doing custom memory management in a tight embedded system, don't even have a malloc implementation. Roll your own tiny libc subset, import pieces from PDClib (marcan_42, monocasa). Freestanding C with no standard library isn't scary.
+- **"Turn off reentrancy support"** – Newlib can be configured without reentrancy. This saves static state for functions you're unlikely to need reentrant versions of (kevin_thibedeau, noobermin).
+- **"Remove malloc from the link"** – If you're allocating all memory at compile time, why is `malloc()` being linked in at all? Catch this entire family of problems at link time. Whitelist malloc callers in CI (zgs, MarkSweep, renox).
+- **"It's normal to rely on libc if you understand what it pulls in"** – It's easier to audit what parts of Newlib you're pulling in than to reimplement everything. The idea that you throw out Newlib just because one function pulled in malloc is unjustifiable (klodolph).
 
-- **rand/srand hidden global state**: rand() uses process-global hidden state; srand() resets it. Libraries calling rand() internally break caller reproducibility – this came up repeatedly.
-- **rand_r / caller-supplied state**: matthews2 pointed to `rand_r()` as the fix for thread-unsafe rand. The article actually showed `rand_r()` source code (labeled as `rand()` – a typo noted by unwind). `rand_r()` makes state explicit but is POSIX, not ISO C.
-- **thread safety / reentrancy**: ajuc shared a university story: rand() wasn't thread-safe in their 3D demo, they added locks around rand() calls – which made multithreading useless. Should have used local PRNG state. Why newlib's reentrancy layer needed malloc: adrian_b explained – traditional C library functions use static variables; in multi-threaded programs those get clobbered. Newlib replaces static variables with dynamically-allocated per-thread variables. That's why rand() pulled in malloc.
-- **embedded / static allocation**: embedded systems with kilobytes of RAM care deeply about unexpected malloc linkage. Heap fragmentation, stack depth measurement (`-Wstack-usage`), no dynamic allocation in RTOS – all discussed.
-- **freestanding C / tiny libc subsets**: m1n1 (Asahi Linux) cited as example of freestanding C with embedded libc subset. PDClib, picolibc, picking FreeBSD libc pieces – all suggested.
-- **Rust core/std**: Animats: "This is why Rust has both 'std' and 'core'. 'core' lacks allocation capability." Extended discussion about Rust embedded: binaries can be tiny (~145 bytes x86_64, ~500 bytes–10k ARM), turn off std, jemalloc, debug symbols, unwinding.
-- **double-promotion footgun**: AdamH12113: "accidental promotions of floats to doubles" – C loves float promotion, easy to turn a one-cycle FPU op into a hundred-cycle softfloat call. Use `-Wdouble-promotion` / `-Werror=double-promotion`. Long thread about whether this is C's fault or the compiler's.
-- **RAND_MAX / implementation-defined sequences / modulo bias / randomness quality**: treated as separate questions in the thread. rand quality debated (PCG criticism/defense, LCG constants discussion).
-- **cryptographic security / deterministic seeds / time-based seeding / project-specific PRNGs**: commenters distinguished these use cases clearly – rand is wrong for crypto, fine-ish for toy games with caveats.
-- **rand_r code correctness**: languageserver posted newlib's rand_r LCG code, questioned the `long s = (long)(*seed)` cast. adrian_b initially agreed it was wrong, then corrected: the constants 16807/127773 are carefully chosen to avoid overflow, the code is actually correct, just missing a comment warning not to change constants haphazardly.
+Other recurring HN themes:
 
-### Why "rand is in the C standard library so it is fine" is not enough
-
-The HN thread makes this clear from multiple angles: rand's sequence is implementation-defined (not portable across libcs/versions); rand has hidden global state that library calls disturb; rand is not thread-safe (without rand_r); rand is not cryptographic; `rand() % n` has modulo bias; `RAND_MAX` varies (minimum 32767 per ISO C, but actual values differ); newlib's reentrant wrapper pulled in malloc unexpectedly; embedded systems with static-only allocation need linker-level guarantees, not just API-level ones; and time-based seeding (`srand(time(NULL))`) is low-entropy and predictable.
+- **`rand()` / `srand()` hidden process-global state** – `rand()` has hidden process-global RNG state. Libraries calling `rand()` internally disturb caller expectations. `srand()` resets that state. Same seed repeats a sequence **on the local libc** but the sequence is **implementation-defined**, not portable across libcs or versions.
+- **`rand_r()` and caller-supplied state** – `rand_r()` makes RNG state explicit (caller-supplied `unsigned int *seed`), solving the hidden-global-state problem. But `rand_r()` is **POSIX, not ISO C**, and commenters noted it's still not a high-quality API – "wrongly defined, with an inappropriate size of the state parameter" (adrian_b).
+- **Thread safety and reentrancy** – `rand()` is not thread-safe (ajuc's university graphics demo: locking around `rand()` made multithreading useless). Locking `rand()` is not a quality fix. Per-thread state needs explicit APIs. Newlib's reentrancy layer was trying to solve this but introduced malloc.
+- **Embedded systems / static allocation** – Embedded systems with static allocation care about unexpected malloc linkage because there's no heap, or heap exhaustion is catastrophic. Some commenters run baremetal firmware with zero malloc (rurban: "I never needed a malloc for my baremetal firmwares"). Others allow dynamic allocation at startup only, never thereafter (SAI_Peregrinus).
+- **Linker checks / CI whitelisting** – "Remove malloc from your libc and catch this entire family of problems at link time" (zgs). CI whitelist of all malloc callers (renox).
+- **Freestanding C / tiny libc subsets** – newlib, picolibc, PDClib, rolling your own. m1n1 (Asahi Linux) cited as an example of bare-metal with an embedded libc subset. Import bits and pieces from FreeBSD libc (toast0).
+- **RAND_MAX, implementation-defined sequences, modulo bias** – Separate from the malloc issue. `rand() % n` can be biased. `RAND_MAX` varies. Sequences are implementation-defined.
+- **Cryptographic security vs deterministic seeds** – `rand()` is NOT a CSPRNG. But for deterministic game/fuzzing seeds, a "crappy rand()" might be adequate (oh_sigh). Different use cases need different treatment.
+- **Project-specific PRNGs** – PCG was the article's suggested replacement, which sparked a subthread about PCG's academic reception (SeanLuke / jwmerrill). Other suggestions: xoroshiro64s (rurban), MWC, lemur64 / LCG with 128-bit state (jart), MLFG (adrian_b), AES-CTR (adrian_b). "For any application that needs pseudo-random numbers, you must have a good understanding of its requirements" (adrian_b).
+- **Rust core/std** – Rust's `core` lacks allocation capability, `std` adds it. The language/ecosystem makes it hard to do the wrong thing accidentally – floats stay floats, explicit casts required (Animats, nicoburns, wongarsu).
+- **Double-promotion footgun** – Adjacent embedded footgun: C promotes floats to doubles, turning one-cycle FPU ops into hundred-cycle softfloat calls. Use `-Wdouble-promotion` / `-Werror=double-promotion` (AdamH12113, legalcorrection, markrages).
+- **"rand is in the C standard library so it is fine" is not enough context** – ISO C guarantees are very weak. POSIX adds `rand_r`. newlib adds reentrancy+malloc. glibc/musl/BSD all differ. Embedded linker policy, cryptographic security, thread safety, and production randomness needs are all separate questions.
 
 ## What this lab actually tests
 
-55 deterministic synthetic cases covering:
+A generated C harness compiled with a portable compiler (zig cc, falling back to cc/clang/gcc). The harness runs deterministic fake test cases covering:
 
-- RAND_MAX recorded / minimum boundary marker
-- unseeded rand sequence marker
-- srand same seed repeats / different seeds change sequence (local observation)
-- srand resets global state / rand consumes hidden global state
-- library call disturbs caller sequence
-- seed value vs RNG state distinction
-- implementation-defined sequence / cross-libc not tested
-- newlib malloc behavior NOT reproduced / malloc linkage NOT proven
-- embedded static-allocation policy marker / linker audit NOT performed
-- rand NOT cryptographic / time-based seed NOT run / low-entropy caveat
-- modulo bias computed for n=2,10,100 / rejection sampling marker / bucket-count toy observation / low-bit caveat
-- rand_r available/unavailable / explicit state / POSIX-not-ISO marker / quality NOT guaranteed
-- thread race NOT run / locking NOT a quality fix / per-thread state NOT implemented
-- project PRNG NOT implemented / deterministic game seed / fuzzing reproducibility
-- library internal rand call / fork seed NOT tested / state serialization NOT portable
-- strtol seed parsing (valid / trailing junk / range errno) / negative seed cast caveat / unsigned seed width caveat
-- shuffle modulo / dice roll modulo markers
-- security token / password reset token misuse NOT run
-- CSPRNG alternative NOT used
-- OpenBSD srand_deterministic NOT tested
-- Rust core/std embedded comparison NOT tested
-- double-promotion adjacent footgun NOT tested
-- cleanup / no-global-reset-except-srand marker
-- naive method expected-failure case
+- `RAND_MAX` recorded, minimum boundary (≥32767 per ISO C)
+- unseeded `rand()` sequence marker
+- `srand()` same seed repeats sequence on **local libc**
+- `srand()` different seeds usually change sequence (local observation)
+- `srand()` resets global RNG state
+- `rand()` consumes hidden global state
+- interleaved library-style `rand()` call disturbs caller sequence
+- copying seed value ≠ copying RNG state
+- implementation-defined sequence – **NOT portable**
+- cross-libc sequence – **NOT tested**
+- newlib malloc behavior – **NOT reproduced**
+- malloc linkage – **NOT proven**
+- embedded static-allocation policy marker
+- linker-symbol audit – **NOT performed**
+- `rand()` is NOT cryptographic
+- time-based seeding – **NOT run**, `srand(time(NULL))` low-entropy caveat
+- modulo bias computed for n=2,6,10 using `RAND_MAX`
+- rejection sampling – marker only, not production RNG
+- bucket-count toy observation
+- low-bit quality caveat marker
+- `rand_r()` available case (if detected, POSIX)
+- `rand_r()` unavailable skip marker
+- `rand_r()` explicit-state observation
+- `rand_r()` POSIX not ISO C marker
+- `rand_r()` quality not guaranteed marker
+- thread race with `rand()` – **NOT run**
+- locking `rand()` not a quality fix marker
+- per-thread state – **NOT implemented**
+- project-local PRNG – **NOT implemented**
+- deterministic game seed marker
+- fuzzing reproducibility marker
+- library internal `rand()` call marker
+- fork/process seed interaction – **NOT tested**
+- `rand()` state serialization – **NOT portable**
+- `strtol()` seed parsing: valid, trailing-junk rejected, range errno rejected
+- negative seed cast caveat, unsigned seed width caveat
+- shuffle with `rand()` modulo marker
+- dice roll `rand()` modulo marker
+- security token / password reset token misuse – **NOT run**
+- CSPRNG alternative – **NOT used**
+- OpenBSD `srand_deterministic` – **NOT tested**
+- Rust core/std embedded comparison – **NOT tested**
+- double-promotion adjacent footgun – **NOT tested**
 
-### Methods compared
+## What this lab does NOT do
 
-- `preserve_original_case_baseline`
-- `compiler_discovery_checker`
-- `c_harness_compile_checker`
-- `rand_srand_policy_observer`
-- `hidden_state_marker`
-- `modulo_bias_marker`
-- `rand_r_policy_observer`
-- `seed_parsing_policy_observer`
-- `embedded_newlib_scope_marker`
-- `crypto_security_scope_marker`
-- `thread_reentrancy_scope_marker`
-- `portability_scope_marker`
-- `toy_project_prng_marker`
-- `copy_size_timing_marker`
-- `naive_rand_modulo_marker` – intentionally weak, assumes rand is crypto / unbiased / portable
-- `external_rng_truth_not_tested_marker`
+- NOT reproduce newlib's malloc behavior
+- NOT audit newlib / glibc / musl source
+- NOT prove whether local libc `rand()` calls malloc
+- NOT implement a cryptographic RNG
+- NOT read real entropy (`/dev/urandom`, `getrandom`, etc.)
+- NOT benchmark production PRNGs
+- NOT compare every libc implementation
+- NOT fuzz RNG output
+- NOT run statistical batteries (PractRand, TestU01, etc.)
+- NOT inspect linker maps (`nm`/`objdump`/`readelf`)
+- NOT run thread races
+- NOT use malloc interposition / `LD_PRELOAD`
+- NOT run sanitizers / valgrind / fuzzers
+- NOT a C static analyzer
+- NOT a libc conformance suite
+- NOT proof that any RNG is safe
 
-## Scope / what is NOT tested
+All data is synthetic with fake labels: `fake_rng_case`, `demo_seed`, `synthetic_draw`, `toy_bucket`, `example_value`, `fake_game_roll`, `sample_shuffle`, `fictional_device`, `test_prng_state`, `demo_counter`, `fake_library_call`, `fake_entropy_label`, `synthetic_payload`.
 
-This is a toy local lab, NOT a cryptography lab, NOT a security RNG, NOT a statistical test suite, NOT a newlib reproduction, NOT an embedded firmware build, NOT a linker audit, NOT a malloc interposition lab, NOT a sanitizer lab, NOT a C static analyzer, NOT a fuzzing target, NOT a libc conformance suite.
+## Methods
 
-- No real secrets, real entropy, `/dev/random`, `/dev/urandom`, `getrandom`, `arc4random`, OpenSSL, libsodium
-- No newlib source, glibc source, embedded firmware, cross-compilation
-- No linker-map parsing, nm/objdump/readelf, malloc interposition, LD_PRELOAD
-- No sanitizers, valgrind, fuzzing frameworks
-- No external C libraries, PRNG libraries, crypto libraries
-- No network calls during benchmark
-- No statistical batteries (PractRand, TestU01, etc.)
-
-Safe claims distinguish: what HN commenters discussed vs what the linked article claims vs what ISO C exposes vs what POSIX exposes vs what newlib-specific behavior claims vs what local libc actually does vs what this toy lab can prove.
+- `preserve_original_case_baseline` – preserve synthetic seed/draw/modulo/operation before interpretation
+- `compiler_discovery_checker` – discover zig cc / cc / clang / gcc, record path/version/compile command
+- `c_harness_compile_checker` – compile C harness with `-std=c11 -Wall -Wextra -O2`
+- `rand_srand_policy_observer` – `RAND_MAX`, fixed-seed repetition, global-state reset, draw consumption
+- `hidden_state_marker` – `rand()` has process-global hidden state; library calls disturb caller
+- `modulo_bias_marker` – compute modulo bias from `RAND_MAX`, tiny bucket observations (illustration only)
+- `rand_r_policy_observer` – `rand_r()` with explicit caller state if available (POSIX); skip + note if unavailable
+- `seed_parsing_policy_observer` – `strtol()` seed parsing with end-pointer + errno checking
+- `embedded_newlib_scope_marker` – newlib malloc/reentrancy, linker audits, embedded firmware – **NOT reproduced**
+- `crypto_security_scope_marker` – cryptographic security, CSPRNG, password/token generation – **NOT tested**
+- `thread_reentrancy_scope_marker` – thread races, locking, per-thread RNG – **NOT tested** except as markers
+- `portability_scope_marker` – cross-libc sequences, OpenBSD, musl/glibc/newlib differences – **NOT tested**
+- `toy_project_prng_marker` – project-local PRNG comparison marker only (not production quality)
+- `copy_size_timing_marker` – file sizes, binary size, draw counts, elapsed time
+- `naive_rand_modulo_marker` – intentionally weak: assumes `rand()` is crypto, `rand() % n` unbiased, sequences portable, `srand(time(NULL))` secure, `rand_r()` is ISO C – **should fail selected cases**
+- `external_rng_truth_not_tested_marker` – real embedded firmware, newlib source, statistical batteries, CSPRNGs, Rust/C++/Go RNGs – **NOT tested**
 
 ## Running the lab
 
-```
+```bash
 python3 -m py_compile generate_cases.py run_lab.py
 python3 generate_cases.py
 python3 run_lab.py
 ```
 
-`run_lab.py` discovers a compiler in order: `zig cc`, `cc`, `clang`, `gcc`. No root installs, no package managers. Compiler path, version, compile command, and exit status are recorded in `RESULTS.md` and `VERIFY.md`.
+`run_lab.py`:
+1. finds a compiler (`zig cc` > `cc` > `clang` > `gcc`)
+2. writes/regenerates `c_rand_srand_footgun_harness.c`
+3. compiles with `-std=c11 -Wall -Wextra -O2`
+4. runs all cases
+5. writes `RESULTS.md`, `results_rows.csv`, `results_rows.json`
 
-If no usable compiler exists, the lab still runs – C-harness-dependent observations are marked `not_tested` with reason `compiler_not_available`. See `RESULTS.md` for environment status.
+Requires: Python 3, one C compiler (zig cc recommended, no root needed). No apt/sudo, no network during benchmark, no external libraries.
 
-## Results
+## Results (local)
 
-See [RESULTS.md](RESULTS.md) and `results_rows.csv` for per-case/per-method observations.
+See [RESULTS.md](RESULTS.md).
 
-## Verify
+Compiler: zig cc 0.13.0 (clang 18.1.6) – binary 18144 bytes, compile ~0.3s
 
-See [VERIFY.md](VERIFY.md) for a fresh-clone verification transcript.
+53 cases, 16 methods. The naive method correctly fails expected cases (crypto assumptions, portability assumptions, modulo bias ignorance, seed-parsing errors).
 
-## Hacker News thread access
+## Scope / Safety
 
-The Hacker News thread at https://news.ycombinator.com/item?id=30942146 was accessed via the Hacker News API CLI (`hackernews get-item --id 30942146`) before writing the sentiment summary in this README. The thread content was saved to `hn_thread_evidence.md` plus raw JSON at `hn_30942146.json` so the HN step is auditable. No direct quotes are included in the README above – sentiments are summarized in my own words.
+Toy local lab only. Not cryptography. Not a security RNG. Not a statistical test suite. Not a newlib reproduction. Not an embedded firmware build. Not a linker audit. Not a malloc interposition lab. Not a sanitizer / fuzzer / static analyzer. Not a libc conformance suite. Not proof that any RNG is safe.
 
-## License
+Do not use `rand()` for security tokens, password reset tokens, cryptographic keys, or anything requiring unpredictability. Do not assume `rand()` sequences are portable across libcs, versions, or platforms. Do not assume `rand() % n` is unbiased. Do not assume `srand(time(NULL))` is secure. Do not assume `rand_r()` is ISO C or high-quality. This lab does not prove production RNG quality.
 
-MIT / Public domain – this is a toy correctness lab.
+## References
+
+- HN thread: https://news.ycombinator.com/item?id=30942146
+- Article: https://www.thingsquare.com/blog/articles/rand-may-call-malloc/
+- C `rand`: https://en.cppreference.com/w/c/numeric/random/rand
+- C `srand`: https://en.cppreference.com/w/c/numeric/random/srand
+- C `RAND_MAX`: https://en.cppreference.com/w/c/numeric/random/RAND_MAX
+- POSIX `rand_r`: https://pubs.opengroup.org/onlinepubs/9799919799/functions/rand_r.html
