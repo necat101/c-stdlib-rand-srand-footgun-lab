@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+c_harness
+*.o
+*.out
+/results_tmp/
+.DS_Store
