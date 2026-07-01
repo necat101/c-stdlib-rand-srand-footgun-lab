@@ -1,262 +1,389 @@
 #!/usr/bin/env python3
-"""
-generate_cases.py — C rand/srand footgun lab case generator
-
-Deterministic synthetic cases only. No real entropy, no secrets.
-"""
-import json, os
+"""Generate deterministic fake C rand/srand test cases."""
+import json
 
 cases = []
 
-def add(cid, category, fake_name, **kw):
-    case = {"case_id": cid, "category": category, "fake_record_name": fake_name}
+def add(cid, category, name, **kw):
+    case = {"case_id": cid, "category": category, "fake_record_name": name}
     case.update(kw)
     cases.append(case)
 
-# 1-55 cases covering the required topics
-add("c01", "randmax", "fake_rng_case_randmax", context_label="rand_policy",
-    randmax_recorded=True, expected_success="success",
-    expected_observation="RAND_MAX_value_recorded",
-    expected_reason="record RAND_MAX from limits.h / stdlib.h")
+# 1-5: RAND_MAX
+add("c01_randmax_recorded", "randmax_recorded", "fake_rng_case_randmax",
+    seed_value=None, draw_count=0,
+    context_label="rand_policy",
+    expected_outcome="success",
+    expected_randmax_observation="recorded",
+    reason=None, naive_should_fail=False)
 
-add("c02", "randmax", "fake_rng_case_randmax_min", context_label="rand_policy",
-    randmax_minimum_marker=True, expected_success="success",
-    expected_observation="RAND_MAX_gte_32767_per_iso_c",
-    expected_reason="ISO C requires RAND_MAX >= 32767")
+add("c02_randmax_minimum", "randmax_minimum_marker", "demo_seed",
+    seed_value=None, draw_count=0,
+    context_label="rand_policy",
+    expected_outcome="success",
+    expected_randmax_observation="minimum_32767",
+    reason="RAND_MAX >= 32767 per ISO C", naive_should_fail=False)
 
-add("c03", "unseeded", "demo_seed_unseeded", context_label="srand_policy",
-    unseeded_sequence=True, expected_success="success",
-    expected_observation="unseeded_rand_behaves_like_srand_1",
-    expected_reason="ISO C: rand() without prior srand() behaves as if srand(1) was called")
+# 6-14: srand/sequence
+add("c03_unseeded_sequence", "unseeded_sequence", "synthetic_draw",
+    seed_value=None, draw_count=1,
+    context_label="hidden_state_caveat",
+    expected_outcome="success",
+    expected_sequence_observation="local_only",
+    reason=None, naive_should_fail=False)
 
-add("c04", "same_seed", "synthetic_draw_seed42_a", seed_value=42, draw_count=8,
-    context_label="srand_policy", same_seed_repeats=True, expected_success="success",
-    expected_observation="same_seed_repeats_locally", expected_reason="srand resets global state deterministically on local libc")
+add("c04_same_seed_repeats", "same_seed_repeats", "demo_seed",
+    seed_value=12345, draw_count=5,
+    context_label="rand_policy",
+    expected_outcome="success",
+    expected_sequence_observation="repeat_local",
+    expected_reset_observation="reset",
+    reason="same seed repeats on local libc", naive_should_fail=False)
 
-add("c05", "same_seed", "synthetic_draw_seed1234_a", seed_value=1234, draw_count=8,
-    context_label="srand_policy", same_seed_repeats=True, expected_success="success",
-    expected_observation="same_seed_repeats_locally")
+add("c05_different_seed_changes", "different_seed_local_observation", "fake_rng_case",
+    seed_value=54321, draw_count=5,
+    context_label="rand_policy",
+    expected_outcome="success",
+    expected_sequence_observation="usually_changes",
+    reason=None, naive_should_fail=False)
 
-add("c06", "different_seed", "demo_seed_diff_1", seed_value=1, draw_count=5,
-    context_label="srand_policy", different_seed_local_observation=True, expected_success="success",
-    expected_observation="different_seeds_usually_change_sequence_local",
-    expected_reason="local observation only, not a portability guarantee")
+add("c06_srand_resets_global", "srand_resets_global_state", "test_prng_state",
+    seed_value=42, draw_count=3,
+    context_label="hidden_state_caveat",
+    expected_outcome="success",
+    expected_reset_observation="reset",
+    reason=None, naive_should_fail=False)
 
-add("c07", "different_seed", "demo_seed_diff_2", seed_value=999, draw_count=5,
-    context_label="srand_policy", different_seed_local_observation=True, expected_success="success",
-    expected_observation="different_seeds_usually_change_sequence_local")
+add("c07_rand_consumes_state", "rand_consumes_global_state", "demo_counter",
+    seed_value=7, draw_count=10,
+    context_label="hidden_state_caveat",
+    expected_outcome="success",
+    expected_sequence_observation="consumes",
+    reason=None, naive_should_fail=False)
 
-add("c08", "srand_reset", "test_prng_state_reset", seed_value=555, draw_count=4,
-    context_label="hidden_state_caveat", srand_resets_global_state=True, expected_success="success",
-    expected_observation="srand_resets_global_rng_state")
+add("c08_library_disturbs", "library_call_disturbs_sequence", "fake_library_call",
+    seed_value=99, draw_count=5,
+    context_label="hidden_state_caveat",
+    expected_outcome="success",
+    expected_sequence_observation="disturbed",
+    reason="library rand() calls disturb caller", naive_should_fail=False)
 
-add("c09", "rand_consumes", "demo_counter_draws", seed_value=7, draw_count=10,
-    context_label="hidden_state_caveat", rand_consumes_global_state=True, expected_success="success",
-    expected_observation="each_rand_call_consumes_global_state")
+add("c09_seed_not_state", "seed_not_state_marker", "test_prng_state",
+    seed_value=None, draw_count=0,
+    context_label="hidden_state_caveat",
+    expected_outcome="not_applicable",
+    expected_sequence_observation="not_portable",
+    reason="copying seed != copying RNG state", naive_should_fail=True)
 
-add("c10", "library_disturb", "fake_library_call_a", seed_value=100, draw_count=6,
-    context_label="hidden_state_caveat", library_call_disturbs_sequence=True, expected_success="success",
-    expected_observation="interleaved_library_rand_disturbs_caller_sequence",
-    expected_reason="hidden process-global state: library calls to rand change caller's sequence")
+# 15-20: portability / newlib
+add("c10_impl_defined_sequence", "implementation_defined_sequence", "synthetic_payload",
+    seed_value=1, draw_count=3,
+    context_label="portability_not_tested",
+    expected_outcome="success",
+    expected_sequence_observation="implementation_defined",
+    portability_truth_not_tested=True,
+    reason=None, naive_should_fail=False)
 
-add("c11", "seed_not_state", "test_prng_state_copy_marker", seed_value=42,
-    context_label="hidden_state_caveat", seed_not_state_marker=True, expected_success="success",
-    expected_observation="copying_seed_value_is_not_copying_rng_state")
+add("c11_cross_libc_not_tested", "cross_libc_not_tested", "fake_entropy_label",
+    seed_value=1, draw_count=0,
+    context_label="portability_not_tested",
+    expected_outcome="not_tested",
+    portability_truth_not_tested=True,
+    reason="cross-libc sequence not tested", naive_should_fail=True)
 
-add("c12", "implementation_defined", "example_value_impl_def", seed_value=42, draw_count=3,
-    context_label="portability_not_tested", implementation_defined_sequence=True, expected_success="success",
-    expected_observation="rand_sequence_is_implementation_defined",
-    expected_reason="ISO C does not specify rand algorithm; sequences differ across libcs/versions")
+add("c12_newlib_malloc_not_reproduced", "newlib_malloc_not_reproduced", "fictional_device",
+    seed_value=None, draw_count=0,
+    context_label="newlib_not_reproduced",
+    expected_outcome="not_tested",
+    newlib_truth_not_tested=True,
+    reason="newlib malloc/reentrancy not reproduced", naive_should_fail=False)
 
-add("c13", "cross_libc", "fake_rng_case_cross_libc", context_label="portability_not_tested",
-    cross_libc_not_tested=True, expected_success="not_tested",
-    expected_observation="cross_libc_sequence_not_tested",
-    expected_reason="this lab tests local libc only")
+add("c13_malloc_linkage_not_proven", "malloc_linkage_not_proven", "fictional_device",
+    seed_value=None, draw_count=0,
+    context_label="newlib_not_reproduced",
+    expected_outcome="not_tested",
+    newlib_truth_not_tested=True,
+    reason="malloc linkage not proven", naive_should_fail=False)
 
-add("c14", "newlib_malloc", "fictional_device_newlib", context_label="newlib_not_reproduced",
-    newlib_malloc_not_reproduced=True, expected_success="not_tested",
-    expected_observation="newlib_malloc_reentrancy_not_reproduced",
-    expected_reason="HN article theme: newlib rand() pulled in malloc via reentrancy support – not reproduced in this toy lab")
+add("c14_embedded_static_alloc", "embedded_static_allocation_marker", "fictional_device",
+    seed_value=None, draw_count=0,
+    context_label="embedded_policy_marker",
+    expected_outcome="not_applicable",
+    reason="embedded static-allocation policy marker", naive_should_fail=False)
 
-add("c15", "malloc_linkage", "synthetic_payload_malloc_link", context_label="newlib_not_reproduced",
-    malloc_linkage_not_proven=True, expected_success="not_tested",
-    expected_observation="malloc_linkage_not_proven_locally")
+add("c15_linker_audit_not_performed", "linker_audit_not_performed", "fictional_device",
+    seed_value=None, draw_count=0,
+    context_label="embedded_policy_marker",
+    expected_outcome="not_tested",
+    reason="linker-symbol audit not performed", naive_should_fail=False)
 
-add("c16", "embedded_static", "fictional_device_static_alloc", context_label="embedded_policy_marker",
-    embedded_static_allocation_marker=True, expected_success="success",
-    expected_observation="embedded_static_allocation_policy_marker",
-    expected_reason="HN debate: embedded systems with static allocation care about unexpected malloc linkage")
+# 16-22: crypto / security
+add("c16_rand_not_crypto", "rand_not_crypto", "fake_rng_case",
+    seed_value=None, draw_count=0,
+    context_label="crypto_not_tested",
+    expected_outcome="success",
+    security_truth_not_tested=True,
+    reason="rand is not a CSPRNG", naive_should_fail=True)
 
-add("c17", "linker_audit", "fake_entropy_label_linker", context_label="embedded_policy_marker",
-    linker_audit_not_performed=True, expected_success="not_tested",
-    expected_observation="linker_symbol_audit_not_performed")
+add("c17_time_seed_not_run", "time_seed_not_run", "demo_seed",
+    seed_value=None, draw_count=0,
+    context_label="crypto_not_tested",
+    expected_outcome="not_tested",
+    security_truth_not_tested=True,
+    reason="time-based seeding not run", naive_should_fail=False)
 
-add("c18", "crypto_marker", "fake_entropy_label_crypto", context_label="crypto_not_tested",
-    rand_not_crypto=True, expected_success="success",
-    expected_observation="rand_is_not_a_csprng",
-    expected_reason="rand is not cryptographically secure – do not use for security tokens")
+add("c18_srand_time_low_entropy", "srand_time_low_entropy", "demo_seed",
+    seed_value=None, draw_count=0,
+    context_label="crypto_not_tested",
+    expected_outcome="not_applicable",
+    security_truth_not_tested=True,
+    reason="srand(time(NULL)) low-entropy caveat", naive_should_fail=True)
 
-add("c19", "time_seed", "demo_seed_time_marker", context_label="srand_policy",
-    time_seed_not_run=True, expected_success="not_tested",
-    expected_observation="time_based_seed_not_run",
-    expected_reason="time(NULL) seeding not executed – low entropy, predictable")
+add("c19_security_token_misuse", "security_token_misuse_not_run", "example_value",
+    seed_value=None, draw_count=0,
+    context_label="security_not_tested",
+    expected_outcome="not_tested",
+    security_truth_not_tested=True,
+    reason="security token misuse – not run", naive_should_fail=False)
 
-add("c20", "srand_time_low_entropy", "fake_game_roll_time_seed", context_label="crypto_not_tested",
-    srand_time_low_entropy=True, expected_success="success",
-    expected_observation="srand_time_null_low_entropy_caveat")
+add("c20_password_reset_misuse", "password_reset_token_misuse_not_run", "example_value",
+    seed_value=None, draw_count=0,
+    context_label="security_not_tested",
+    expected_outcome="not_tested",
+    security_truth_not_tested=True,
+    reason="password reset token misuse – not run", naive_should_fail=False)
 
-add("c21", "modulo_bias", "toy_bucket_mod_2", modulo_n=2, context_label="modulo_bias_caveat",
-    modulo_bias_computed=True, expected_success="success",
-    expected_observation="modulo_bias_computed_from_rand_max",
-    expected_reason="rand() % n can be biased when RAND_MAX+1 not divisible by n")
+add("c21_csprng_not_used", "csprng_alternative_not_used", "fake_rng_case",
+    seed_value=None, draw_count=0,
+    context_label="crypto_not_tested",
+    expected_outcome="not_tested",
+    security_truth_not_tested=True,
+    reason="CSPRNG alternative not used", naive_should_fail=False)
 
-add("c22", "modulo_bias", "toy_bucket_mod_10", modulo_n=10, context_label="modulo_bias_caveat",
-    modulo_bias_computed=True, expected_success="success",
-    expected_observation="modulo_bias_computed_from_rand_max")
+# 23-29: modulo bias
+add("c22_modulo_bias_n2", "modulo_bias_computed", "toy_bucket",
+    seed_value=None, draw_count=0, modulo_n=2,
+    context_label="modulo_bias_caveat",
+    expected_outcome="success",
+    expected_modulo_bias_observation="computed",
+    reason=None, naive_should_fail=False)
 
-add("c23", "modulo_bias", "toy_bucket_mod_100", modulo_n=100, context_label="modulo_bias_caveat",
-    modulo_bias_computed=True, expected_success="success",
-    expected_observation="modulo_bias_computed_from_rand_max")
+add("c23_modulo_bias_n6", "modulo_bias_computed", "fake_game_roll",
+    seed_value=None, draw_count=0, modulo_n=6,
+    context_label="modulo_bias_caveat",
+    expected_outcome="success",
+    expected_modulo_bias_observation="computed",
+    reason="rand() % 6 bias check", naive_should_fail=False)
 
-add("c24", "rejection_sampling", "sample_shuffle_reject_marker", context_label="modulo_bias_caveat",
-    rejection_sampling_marker=True, expected_success="not_tested",
-    expected_observation="rejection_sampling_marker_not_implemented_as_production_rng")
+add("c24_modulo_bias_n10", "modulo_bias_computed", "toy_bucket",
+    seed_value=None, draw_count=0, modulo_n=10,
+    context_label="modulo_bias_caveat",
+    expected_outcome="success",
+    expected_modulo_bias_observation="computed",
+    reason=None, naive_should_fail=False)
 
-add("c25", "bucket_count", "toy_bucket_counts", seed_value=999, draw_count=1000, modulo_n=10,
-    context_label="modulo_bias_caveat", bucket_count_toy_observation=True, expected_success="success",
-    expected_observation="bucket_count_toy_observation_local_only")
+add("c25_rejection_sampling_marker", "rejection_sampling_marker", "toy_bucket",
+    seed_value=None, draw_count=0,
+    context_label="modulo_bias_caveat",
+    expected_outcome="not_applicable",
+    reason="rejection sampling not implemented as production RNG", naive_should_fail=False)
 
-add("c26", "low_bit", "example_value_low_bits", context_label="modulo_bias_caveat",
-    low_bit_caveat=True, expected_success="success",
-    expected_observation="low_bit_quality_caveat_marker",
-    expected_reason="historical rand implementations had poor low-bit quality")
+add("c26_bucket_count_toy", "bucket_count_toy_observation", "toy_bucket",
+    seed_value=11, draw_count=1000, modulo_n=6,
+    context_label="modulo_bias_caveat",
+    expected_outcome="success",
+    expected_modulo_bias_observation="observed",
+    reason=None, naive_should_fail=False)
 
-add("c27", "rand_r_avail", "fake_rng_case_rand_r_check", context_label="posix_extension_caveat",
-    rand_r_available=True, expected_success="success",
-    expected_observation="rand_r_explicit_state_if_available",
-    expected_reason="rand_r makes state explicit – POSIX, not ISO C")
+add("c27_low_bit_caveat", "low_bit_caveat", "fake_game_roll",
+    seed_value=None, draw_count=0,
+    context_label="modulo_bias_caveat",
+    expected_outcome="not_applicable",
+    reason="low-bit quality caveat", naive_should_fail=False)
 
-add("c28", "rand_r_unavail", "fake_rng_case_rand_r_skip", context_label="posix_extension_caveat",
-    rand_r_unavailable=True, expected_success="skip",
-    expected_observation="rand_r_unavailable_skip",
-    expected_reason="rand_r is POSIX, not ISO C – may be unavailable")
+add("c28_dice_roll_modulo", "dice_roll_modulo_marker", "fake_game_roll",
+    seed_value=7, draw_count=10, modulo_n=6,
+    context_label="modulo_bias_caveat",
+    expected_outcome="success",
+    expected_modulo_bias_observation="observed",
+    reason=None, naive_should_fail=False)
 
-add("c29", "rand_r_explicit", "test_prng_state_rand_r", context_label="posix_extension_caveat",
-    rand_r_explicit_state=True, expected_success="success",
-    expected_observation="rand_r_explicit_caller_state_observation")
+# 30-37: rand_r
+add("c29_rand_r_available", "rand_r_available", "test_prng_state",
+    seed_value=123, draw_count=5,
+    context_label="posix_extension_caveat",
+    expected_outcome="success",
+    expected_rand_r_observation="available_or_skip",
+    reason=None, naive_should_fail=False)
 
-add("c30", "rand_r_posix", "example_value_posix_marker", context_label="posix_extension_caveat",
-    rand_r_posix_not_iso=True, expected_success="success",
-    expected_observation="rand_r_posix_not_iso_c_marker")
+add("c30_rand_r_unavailable", "rand_r_unavailable", "test_prng_state",
+    seed_value=None, draw_count=0,
+    context_label="posix_extension_caveat",
+    expected_outcome="skip",
+    expected_rand_r_observation="unavailable_ok",
+    reason="rand_r is POSIX not ISO C", naive_should_fail=False)
 
-add("c31", "rand_r_quality", "synthetic_draw_rand_r_quality", context_label="posix_extension_caveat",
-    rand_r_quality_not_guaranteed=True, expected_success="success",
-    expected_observation="rand_r_quality_not_guaranteed_marker")
+add("c31_rand_r_explicit_state", "rand_r_explicit_state", "test_prng_state",
+    seed_value=99, draw_count=5,
+    context_label="posix_extension_caveat",
+    expected_outcome="success",
+    expected_rand_r_observation="explicit_state",
+    reason=None, naive_should_fail=False)
 
-add("c32", "thread_race", "demo_counter_thread_race", context_label="thread_safety_not_tested",
-    thread_race_not_run=True, expected_success="not_tested",
-    expected_observation="thread_race_with_rand_not_run")
+add("c32_rand_r_posix_not_iso", "rand_r_posix_not_iso", "test_prng_state",
+    seed_value=None, draw_count=0,
+    context_label="posix_extension_caveat",
+    expected_outcome="not_applicable",
+    expected_rand_r_observation="posix_only",
+    reason="rand_r POSIX not ISO C", naive_should_fail=True)
 
-add("c33", "locking_marker", "fake_library_call_lock", context_label="thread_safety_not_tested",
-    locking_not_quality_fix=True, expected_success="success",
-    expected_observation="locking_rand_not_a_quality_fix_marker",
-    expected_reason="HN comment: adding locks around rand made multithreading useless")
+add("c33_rand_r_quality_not_guaranteed", "rand_r_quality_not_guaranteed", "test_prng_state",
+    seed_value=None, draw_count=0,
+    context_label="posix_extension_caveat",
+    expected_outcome="not_applicable",
+    reason="rand_r quality not guaranteed", naive_should_fail=False)
 
-add("c34", "per_thread_state", "test_prng_state_per_thread", context_label="thread_safety_not_tested",
-    per_thread_state_not_implemented=True, expected_success="not_tested",
-    expected_observation="per_thread_rng_state_not_implemented")
+# 34-38: thread / reentrancy
+add("c34_thread_race_not_run", "thread_race_not_run", "fake_rng_case",
+    seed_value=None, draw_count=0,
+    context_label="thread_safety_not_tested",
+    expected_outcome="not_tested",
+    thread_safety_truth_not_tested=True,
+    reason="thread race with rand not run", naive_should_fail=False)
 
-add("c35", "project_prng", "example_value_project_prng", context_label="srand_policy",
-    project_prng_not_implemented=True, expected_success="not_tested",
-    expected_observation="project_local_prng_marker_not_implemented")
+add("c35_locking_not_quality_fix", "locking_not_quality_fix", "fake_rng_case",
+    seed_value=None, draw_count=0,
+    context_label="thread_safety_not_tested",
+    expected_outcome="not_applicable",
+    thread_safety_truth_not_tested=True,
+    reason="locking rand not a quality fix", naive_should_fail=False)
 
-add("c36", "game_seed", "fake_game_roll_deterministic", seed_value=12345, draw_count=5,
-    context_label="srand_policy", deterministic_game_seed_marker=True, expected_success="success",
-    expected_observation="deterministic_game_seed_marker")
+add("c36_per_thread_state_not_implemented", "per_thread_state_not_implemented", "test_prng_state",
+    seed_value=None, draw_count=0,
+    context_label="thread_safety_not_tested",
+    expected_outcome="not_tested",
+    thread_safety_truth_not_tested=True,
+    reason="per-thread state not implemented", naive_should_fail=False)
 
-add("c37", "fuzzing_seed", "synthetic_payload_fuzz", seed_value=777, draw_count=5,
-    context_label="srand_policy", fuzzing_reproducibility_marker=True, expected_success="success",
-    expected_observation="fuzzing_reproducibility_marker")
+# 39-44: project PRNG / game / fuzz
+add("c37_project_prng_not_implemented", "project_prng_not_implemented", "fake_rng_case",
+    seed_value=None, draw_count=0,
+    context_label="portability_not_tested",
+    expected_outcome="not_applicable",
+    reason="project-local PRNG marker not implemented", naive_should_fail=False)
 
-add("c38", "library_internal", "fake_library_call_internal", seed_value=200, draw_count=5,
-    context_label="hidden_state_caveat", library_internal_rand_marker=True, expected_success="success",
-    expected_observation="library_internal_rand_call_marker")
+add("c38_deterministic_game_seed", "deterministic_game_seed_marker", "fake_game_roll",
+    seed_value=777, draw_count=5,
+    context_label="rand_policy",
+    expected_outcome="success",
+    expected_sequence_observation="repeat_local",
+    reason=None, naive_should_fail=False)
 
-add("c39", "fork_seed", "demo_counter_fork", context_label="portability_not_tested",
-    fork_seed_not_tested=True, expected_success="not_tested",
-    expected_observation="fork_process_seed_interaction_not_tested")
+add("c39_fuzzing_reproducibility", "fuzzing_reproducibility_marker", "synthetic_payload",
+    seed_value=555, draw_count=5,
+    context_label="rand_policy",
+    expected_outcome="success",
+    expected_sequence_observation="repeat_local",
+    reason=None, naive_should_fail=False)
 
-add("c40", "rand_state_serialize", "test_prng_state_serialize", context_label="portability_not_tested",
-    rand_state_serialization_not_portable=True, expected_success="success",
-    expected_observation="serialization_of_rand_state_not_portable_marker")
+add("c40_library_internal_rand", "library_internal_rand_marker", "fake_library_call",
+    seed_value=13, draw_count=3,
+    context_label="hidden_state_caveat",
+    expected_outcome="success",
+    expected_sequence_observation="disturbed",
+    reason="library internal rand call", naive_should_fail=False)
 
-add("c41", "strtol_valid", "example_value_strtol_42", context_label="rand_policy",
-    strtol_seed_valid=True, expected_success="success", seed_parse_input="42",
-    expected_observation="atoi_strtol_seed_parsing_valid")
+# 45-53: strtol seeding + misc
+add("c41_strtol_seed_valid", "strtol_seed_valid", "demo_seed",
+    seed_value=None, draw_count=0,
+    context_label="rand_policy",
+    expected_outcome="success",
+    expected_strtol_observation="valid",
+    expected_return_value_observation=12345,
+    reason=None, naive_should_fail=False)
 
-add("c42", "strtol_trailing", "example_value_strtol_junk", context_label="rand_policy",
-    strtol_seed_trailing_junk=True, expected_success="error", seed_parse_input="123abc",
-    expected_observation="strtol_trailing_junk_seed_rejected")
+add("c42_strtol_trailing_junk", "strtol_seed_trailing_junk", "demo_seed",
+    seed_value=None, draw_count=0,
+    context_label="rand_policy",
+    expected_outcome="error",
+    expected_strtol_observation="trailing_junk",
+    reason="strtol trailing-junk seed rejected", naive_should_fail=True)
 
-add("c43", "strtol_range", "example_value_strtol_range", context_label="rand_policy",
-    strtol_seed_range_errno=True, expected_success="error", seed_parse_input="999999999999999999999",
-    expected_observation="strtol_range_errno_seed_rejected")
+add("c43_strtol_range_errno", "strtol_seed_range_errno", "demo_seed",
+    seed_value=None, draw_count=0,
+    context_label="rand_policy",
+    expected_outcome="error",
+    expected_strtol_observation="range_errno",
+    expected_errno_observation="ERANGE",
+    reason="strtol range errno seed rejected", naive_should_fail=True)
 
-add("c44", "negative_seed_cast", "demo_seed_negative", context_label="rand_policy",
-    negative_seed_cast_caveat=True, expected_success="success", seed_parse_input="-1",
-    expected_observation="negative_seed_cast_caveat_marker",
-    expected_reason="srand takes unsigned int – negative input casting caveat")
+add("c44_negative_seed_cast", "negative_seed_cast_caveat", "demo_seed",
+    seed_value=None, draw_count=0,
+    context_label="rand_policy",
+    expected_outcome="not_applicable",
+    reason="negative seed cast caveat", naive_should_fail=False)
 
-add("c45", "unsigned_seed_width", "demo_seed_width", context_label="rand_policy",
-    unsigned_seed_width_caveat=True, expected_success="success",
-    expected_observation="unsigned_seed_width_caveat_marker")
+add("c45_unsigned_seed_width", "unsigned_seed_width_caveat", "demo_seed",
+    seed_value=None, draw_count=0,
+    context_label="rand_policy",
+    expected_outcome="not_applicable",
+    reason="unsigned seed width caveat", naive_should_fail=False)
 
-add("c46", "shuffle_modulo", "sample_shuffle_modulo", seed_value=555, draw_count=10,
-    context_label="modulo_bias_caveat", shuffle_modulo_marker=True, expected_success="success",
-    expected_observation="shuffle_with_rand_modulo_marker")
+add("c46_shuffle_modulo", "shuffle_modulo_marker", "sample_shuffle",
+    seed_value=42, draw_count=10, modulo_n=10,
+    context_label="modulo_bias_caveat",
+    expected_outcome="success",
+    expected_modulo_bias_observation="observed",
+    reason=None, naive_should_fail=False)
 
-add("c47", "dice_roll", "fake_game_roll_d6", seed_value=13, draw_count=20, modulo_n=6,
-    context_label="modulo_bias_caveat", dice_roll_modulo_marker=True, expected_success="success",
-    expected_observation="dice_roll_rand_modulo_marker")
+add("c47_openbsd_srand_not_tested", "openbsd_srand_deterministic_not_tested", "fake_rng_case",
+    seed_value=None, draw_count=0,
+    context_label="portability_not_tested",
+    expected_outcome="not_tested",
+    portability_truth_not_tested=True,
+    reason="OpenBSD srand_deterministic not tested", naive_should_fail=False)
 
-add("c48", "security_token", "fake_entropy_label_token", context_label="crypto_not_tested",
-    security_token_misuse_not_run=True, expected_success="not_tested",
-    expected_observation="security_token_misuse_marker_not_run",
-    expected_reason="do NOT use rand for security tokens")
+add("c48_rust_core_not_tested", "rust_core_std_not_tested", "fake_rng_case",
+    seed_value=None, draw_count=0,
+    context_label="portability_not_tested",
+    expected_outcome="not_tested",
+    portability_truth_not_tested=True,
+    reason="Rust core/std embedded comparison not tested", naive_should_fail=False)
 
-add("c49", "password_reset", "fake_entropy_label_pwreset", context_label="crypto_not_tested",
-    password_reset_token_misuse_not_run=True, expected_success="not_tested",
-    expected_observation="password_reset_token_misuse_not_run")
+add("c49_double_promotion_not_tested", "double_promotion_not_tested", "example_value",
+    seed_value=None, draw_count=0,
+    context_label="portability_not_tested",
+    expected_outcome="not_tested",
+    reason="double-promotion adjacent footgun not tested", naive_should_fail=False)
 
-add("c50", "csprng_alt", "fake_entropy_label_csprng", context_label="crypto_not_tested",
-    csprng_alternative_not_used=True, expected_success="not_tested",
-    expected_observation="csprng_alternative_not_used_marker")
+add("c50_fork_seed_not_tested", "fork_seed_not_tested", "fake_rng_case",
+    seed_value=None, draw_count=0,
+    context_label="portability_not_tested",
+    expected_outcome="not_tested",
+    portability_truth_not_tested=True,
+    reason="fork/process seed interaction not tested", naive_should_fail=False)
 
-add("c51", "openbsd_srand", "example_value_openbsd", context_label="portability_not_tested",
-    openbsd_srand_deterministic_not_tested=True, expected_success="not_tested",
-    expected_observation="openbsd_srand_deterministic_discussion_not_tested")
+add("c51_rand_state_serialization_not_portable", "rand_state_serialization_not_portable", "test_prng_state",
+    seed_value=None, draw_count=0,
+    context_label="portability_not_tested",
+    expected_outcome="not_tested",
+    portability_truth_not_tested=True,
+    reason="serialization of rand state not portable", naive_should_fail=False)
 
-add("c52", "rust_core", "fictional_device_rust", context_label="portability_not_tested",
-    rust_core_std_not_tested=True, expected_success="not_tested",
-    expected_observation="rust_core_std_embedded_comparison_not_tested",
-    expected_reason="HN debate: Rust core/std, embedded alternatives – not tested here")
+add("c52_cleanup_marker", "cleanup_marker", "synthetic_payload",
+    seed_value=None, draw_count=0,
+    context_label="rand_policy",
+    expected_outcome="success",
+    reason="cleanup/no-global-reset-except-srand", naive_should_fail=False)
 
-add("c53", "double_promotion", "example_value_double_promote", context_label="portability_not_tested",
-    double_promotion_not_tested=True, expected_success="not_tested",
-    expected_observation="double_promotion_adjacent_footgun_not_tested",
-    expected_reason="HN comment: accidental float→double promotion in embedded C – adjacent footgun, not tested")
+add("c53_safety_caveat", "safety_caveat", "fake_rng_case",
+    seed_value=None, draw_count=0,
+    context_label="crypto_not_tested",
+    expected_outcome="not_applicable",
+    security_truth_not_tested=True,
+    reason="toy lab – not production RNG quality", naive_should_fail=False)
 
-add("c54", "cleanup_marker", "demo_counter_cleanup", context_label="rand_policy",
-    cleanup_marker=True, expected_success="success",
-    expected_observation="no_global_reset_except_srand_marker")
-
-add("c55", "naive_negative", "example_value_naive_fail", context_label="naive_negative",
-    naive_should_fail=True, expected_success="error",
-    expected_observation="naive_rand_assumes_crypto_portable_unbiased",
-    expected_reason="naive method assumes rand is crypto, unbiased, portable – should fail")
-
-# write cases
-os.makedirs(os.path.dirname(__file__) or ".", exist_ok=True)
-with open(os.path.join(os.path.dirname(__file__), "cases.json"), "w") as f:
+with open("cases.json", "w") as f:
     json.dump(cases, f, indent=2)
-print(f"Wrote {len(cases)} cases to cases.json")
+
+print(f"Generated {len(cases)} cases -> cases.json")
