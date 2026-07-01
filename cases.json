@@ -1,0 +1,557 @@
+[
+  {
+    "case_id": "c01",
+    "category": "randmax",
+    "fake_record_name": "fake_rng_case_randmax",
+    "context_label": "rand_policy",
+    "randmax_recorded": true,
+    "expected_success": "success",
+    "expected_observation": "RAND_MAX_value_recorded",
+    "expected_reason": "record RAND_MAX from limits.h / stdlib.h"
+  },
+  {
+    "case_id": "c02",
+    "category": "randmax",
+    "fake_record_name": "fake_rng_case_randmax_min",
+    "context_label": "rand_policy",
+    "randmax_minimum_marker": true,
+    "expected_success": "success",
+    "expected_observation": "RAND_MAX_gte_32767_per_iso_c",
+    "expected_reason": "ISO C requires RAND_MAX >= 32767"
+  },
+  {
+    "case_id": "c03",
+    "category": "unseeded",
+    "fake_record_name": "demo_seed_unseeded",
+    "context_label": "srand_policy",
+    "unseeded_sequence": true,
+    "expected_success": "success",
+    "expected_observation": "unseeded_rand_behaves_like_srand_1",
+    "expected_reason": "ISO C: rand() without prior srand() behaves as if srand(1) was called"
+  },
+  {
+    "case_id": "c04",
+    "category": "same_seed",
+    "fake_record_name": "synthetic_draw_seed42_a",
+    "seed_value": 42,
+    "draw_count": 8,
+    "context_label": "srand_policy",
+    "same_seed_repeats": true,
+    "expected_success": "success",
+    "expected_observation": "same_seed_repeats_locally",
+    "expected_reason": "srand resets global state deterministically on local libc"
+  },
+  {
+    "case_id": "c05",
+    "category": "same_seed",
+    "fake_record_name": "synthetic_draw_seed1234_a",
+    "seed_value": 1234,
+    "draw_count": 8,
+    "context_label": "srand_policy",
+    "same_seed_repeats": true,
+    "expected_success": "success",
+    "expected_observation": "same_seed_repeats_locally"
+  },
+  {
+    "case_id": "c06",
+    "category": "different_seed",
+    "fake_record_name": "demo_seed_diff_1",
+    "seed_value": 1,
+    "draw_count": 5,
+    "context_label": "srand_policy",
+    "different_seed_local_observation": true,
+    "expected_success": "success",
+    "expected_observation": "different_seeds_usually_change_sequence_local",
+    "expected_reason": "local observation only, not a portability guarantee"
+  },
+  {
+    "case_id": "c07",
+    "category": "different_seed",
+    "fake_record_name": "demo_seed_diff_2",
+    "seed_value": 999,
+    "draw_count": 5,
+    "context_label": "srand_policy",
+    "different_seed_local_observation": true,
+    "expected_success": "success",
+    "expected_observation": "different_seeds_usually_change_sequence_local"
+  },
+  {
+    "case_id": "c08",
+    "category": "srand_reset",
+    "fake_record_name": "test_prng_state_reset",
+    "seed_value": 555,
+    "draw_count": 4,
+    "context_label": "hidden_state_caveat",
+    "srand_resets_global_state": true,
+    "expected_success": "success",
+    "expected_observation": "srand_resets_global_rng_state"
+  },
+  {
+    "case_id": "c09",
+    "category": "rand_consumes",
+    "fake_record_name": "demo_counter_draws",
+    "seed_value": 7,
+    "draw_count": 10,
+    "context_label": "hidden_state_caveat",
+    "rand_consumes_global_state": true,
+    "expected_success": "success",
+    "expected_observation": "each_rand_call_consumes_global_state"
+  },
+  {
+    "case_id": "c10",
+    "category": "library_disturb",
+    "fake_record_name": "fake_library_call_a",
+    "seed_value": 100,
+    "draw_count": 6,
+    "context_label": "hidden_state_caveat",
+    "library_call_disturbs_sequence": true,
+    "expected_success": "success",
+    "expected_observation": "interleaved_library_rand_disturbs_caller_sequence",
+    "expected_reason": "hidden process-global state: library calls to rand change caller's sequence"
+  },
+  {
+    "case_id": "c11",
+    "category": "seed_not_state",
+    "fake_record_name": "test_prng_state_copy_marker",
+    "seed_value": 42,
+    "context_label": "hidden_state_caveat",
+    "seed_not_state_marker": true,
+    "expected_success": "success",
+    "expected_observation": "copying_seed_value_is_not_copying_rng_state"
+  },
+  {
+    "case_id": "c12",
+    "category": "implementation_defined",
+    "fake_record_name": "example_value_impl_def",
+    "seed_value": 42,
+    "draw_count": 3,
+    "context_label": "portability_not_tested",
+    "implementation_defined_sequence": true,
+    "expected_success": "success",
+    "expected_observation": "rand_sequence_is_implementation_defined",
+    "expected_reason": "ISO C does not specify rand algorithm; sequences differ across libcs/versions"
+  },
+  {
+    "case_id": "c13",
+    "category": "cross_libc",
+    "fake_record_name": "fake_rng_case_cross_libc",
+    "context_label": "portability_not_tested",
+    "cross_libc_not_tested": true,
+    "expected_success": "not_tested",
+    "expected_observation": "cross_libc_sequence_not_tested",
+    "expected_reason": "this lab tests local libc only"
+  },
+  {
+    "case_id": "c14",
+    "category": "newlib_malloc",
+    "fake_record_name": "fictional_device_newlib",
+    "context_label": "newlib_not_reproduced",
+    "newlib_malloc_not_reproduced": true,
+    "expected_success": "not_tested",
+    "expected_observation": "newlib_malloc_reentrancy_not_reproduced",
+    "expected_reason": "HN article theme: newlib rand() pulled in malloc via reentrancy support \u2013 not reproduced in this toy lab"
+  },
+  {
+    "case_id": "c15",
+    "category": "malloc_linkage",
+    "fake_record_name": "synthetic_payload_malloc_link",
+    "context_label": "newlib_not_reproduced",
+    "malloc_linkage_not_proven": true,
+    "expected_success": "not_tested",
+    "expected_observation": "malloc_linkage_not_proven_locally"
+  },
+  {
+    "case_id": "c16",
+    "category": "embedded_static",
+    "fake_record_name": "fictional_device_static_alloc",
+    "context_label": "embedded_policy_marker",
+    "embedded_static_allocation_marker": true,
+    "expected_success": "success",
+    "expected_observation": "embedded_static_allocation_policy_marker",
+    "expected_reason": "HN debate: embedded systems with static allocation care about unexpected malloc linkage"
+  },
+  {
+    "case_id": "c17",
+    "category": "linker_audit",
+    "fake_record_name": "fake_entropy_label_linker",
+    "context_label": "embedded_policy_marker",
+    "linker_audit_not_performed": true,
+    "expected_success": "not_tested",
+    "expected_observation": "linker_symbol_audit_not_performed"
+  },
+  {
+    "case_id": "c18",
+    "category": "crypto_marker",
+    "fake_record_name": "fake_entropy_label_crypto",
+    "context_label": "crypto_not_tested",
+    "rand_not_crypto": true,
+    "expected_success": "success",
+    "expected_observation": "rand_is_not_a_csprng",
+    "expected_reason": "rand is not cryptographically secure \u2013 do not use for security tokens"
+  },
+  {
+    "case_id": "c19",
+    "category": "time_seed",
+    "fake_record_name": "demo_seed_time_marker",
+    "context_label": "srand_policy",
+    "time_seed_not_run": true,
+    "expected_success": "not_tested",
+    "expected_observation": "time_based_seed_not_run",
+    "expected_reason": "time(NULL) seeding not executed \u2013 low entropy, predictable"
+  },
+  {
+    "case_id": "c20",
+    "category": "srand_time_low_entropy",
+    "fake_record_name": "fake_game_roll_time_seed",
+    "context_label": "crypto_not_tested",
+    "srand_time_low_entropy": true,
+    "expected_success": "success",
+    "expected_observation": "srand_time_null_low_entropy_caveat"
+  },
+  {
+    "case_id": "c21",
+    "category": "modulo_bias",
+    "fake_record_name": "toy_bucket_mod_2",
+    "modulo_n": 2,
+    "context_label": "modulo_bias_caveat",
+    "modulo_bias_computed": true,
+    "expected_success": "success",
+    "expected_observation": "modulo_bias_computed_from_rand_max",
+    "expected_reason": "rand() % n can be biased when RAND_MAX+1 not divisible by n"
+  },
+  {
+    "case_id": "c22",
+    "category": "modulo_bias",
+    "fake_record_name": "toy_bucket_mod_10",
+    "modulo_n": 10,
+    "context_label": "modulo_bias_caveat",
+    "modulo_bias_computed": true,
+    "expected_success": "success",
+    "expected_observation": "modulo_bias_computed_from_rand_max"
+  },
+  {
+    "case_id": "c23",
+    "category": "modulo_bias",
+    "fake_record_name": "toy_bucket_mod_100",
+    "modulo_n": 100,
+    "context_label": "modulo_bias_caveat",
+    "modulo_bias_computed": true,
+    "expected_success": "success",
+    "expected_observation": "modulo_bias_computed_from_rand_max"
+  },
+  {
+    "case_id": "c24",
+    "category": "rejection_sampling",
+    "fake_record_name": "sample_shuffle_reject_marker",
+    "context_label": "modulo_bias_caveat",
+    "rejection_sampling_marker": true,
+    "expected_success": "not_tested",
+    "expected_observation": "rejection_sampling_marker_not_implemented_as_production_rng"
+  },
+  {
+    "case_id": "c25",
+    "category": "bucket_count",
+    "fake_record_name": "toy_bucket_counts",
+    "seed_value": 999,
+    "draw_count": 1000,
+    "modulo_n": 10,
+    "context_label": "modulo_bias_caveat",
+    "bucket_count_toy_observation": true,
+    "expected_success": "success",
+    "expected_observation": "bucket_count_toy_observation_local_only"
+  },
+  {
+    "case_id": "c26",
+    "category": "low_bit",
+    "fake_record_name": "example_value_low_bits",
+    "context_label": "modulo_bias_caveat",
+    "low_bit_caveat": true,
+    "expected_success": "success",
+    "expected_observation": "low_bit_quality_caveat_marker",
+    "expected_reason": "historical rand implementations had poor low-bit quality"
+  },
+  {
+    "case_id": "c27",
+    "category": "rand_r_avail",
+    "fake_record_name": "fake_rng_case_rand_r_check",
+    "context_label": "posix_extension_caveat",
+    "rand_r_available": true,
+    "expected_success": "success",
+    "expected_observation": "rand_r_explicit_state_if_available",
+    "expected_reason": "rand_r makes state explicit \u2013 POSIX, not ISO C"
+  },
+  {
+    "case_id": "c28",
+    "category": "rand_r_unavail",
+    "fake_record_name": "fake_rng_case_rand_r_skip",
+    "context_label": "posix_extension_caveat",
+    "rand_r_unavailable": true,
+    "expected_success": "skip",
+    "expected_observation": "rand_r_unavailable_skip",
+    "expected_reason": "rand_r is POSIX, not ISO C \u2013 may be unavailable"
+  },
+  {
+    "case_id": "c29",
+    "category": "rand_r_explicit",
+    "fake_record_name": "test_prng_state_rand_r",
+    "context_label": "posix_extension_caveat",
+    "rand_r_explicit_state": true,
+    "expected_success": "success",
+    "expected_observation": "rand_r_explicit_caller_state_observation"
+  },
+  {
+    "case_id": "c30",
+    "category": "rand_r_posix",
+    "fake_record_name": "example_value_posix_marker",
+    "context_label": "posix_extension_caveat",
+    "rand_r_posix_not_iso": true,
+    "expected_success": "success",
+    "expected_observation": "rand_r_posix_not_iso_c_marker"
+  },
+  {
+    "case_id": "c31",
+    "category": "rand_r_quality",
+    "fake_record_name": "synthetic_draw_rand_r_quality",
+    "context_label": "posix_extension_caveat",
+    "rand_r_quality_not_guaranteed": true,
+    "expected_success": "success",
+    "expected_observation": "rand_r_quality_not_guaranteed_marker"
+  },
+  {
+    "case_id": "c32",
+    "category": "thread_race",
+    "fake_record_name": "demo_counter_thread_race",
+    "context_label": "thread_safety_not_tested",
+    "thread_race_not_run": true,
+    "expected_success": "not_tested",
+    "expected_observation": "thread_race_with_rand_not_run"
+  },
+  {
+    "case_id": "c33",
+    "category": "locking_marker",
+    "fake_record_name": "fake_library_call_lock",
+    "context_label": "thread_safety_not_tested",
+    "locking_not_quality_fix": true,
+    "expected_success": "success",
+    "expected_observation": "locking_rand_not_a_quality_fix_marker",
+    "expected_reason": "HN comment: adding locks around rand made multithreading useless"
+  },
+  {
+    "case_id": "c34",
+    "category": "per_thread_state",
+    "fake_record_name": "test_prng_state_per_thread",
+    "context_label": "thread_safety_not_tested",
+    "per_thread_state_not_implemented": true,
+    "expected_success": "not_tested",
+    "expected_observation": "per_thread_rng_state_not_implemented"
+  },
+  {
+    "case_id": "c35",
+    "category": "project_prng",
+    "fake_record_name": "example_value_project_prng",
+    "context_label": "srand_policy",
+    "project_prng_not_implemented": true,
+    "expected_success": "not_tested",
+    "expected_observation": "project_local_prng_marker_not_implemented"
+  },
+  {
+    "case_id": "c36",
+    "category": "game_seed",
+    "fake_record_name": "fake_game_roll_deterministic",
+    "seed_value": 12345,
+    "draw_count": 5,
+    "context_label": "srand_policy",
+    "deterministic_game_seed_marker": true,
+    "expected_success": "success",
+    "expected_observation": "deterministic_game_seed_marker"
+  },
+  {
+    "case_id": "c37",
+    "category": "fuzzing_seed",
+    "fake_record_name": "synthetic_payload_fuzz",
+    "seed_value": 777,
+    "draw_count": 5,
+    "context_label": "srand_policy",
+    "fuzzing_reproducibility_marker": true,
+    "expected_success": "success",
+    "expected_observation": "fuzzing_reproducibility_marker"
+  },
+  {
+    "case_id": "c38",
+    "category": "library_internal",
+    "fake_record_name": "fake_library_call_internal",
+    "seed_value": 200,
+    "draw_count": 5,
+    "context_label": "hidden_state_caveat",
+    "library_internal_rand_marker": true,
+    "expected_success": "success",
+    "expected_observation": "library_internal_rand_call_marker"
+  },
+  {
+    "case_id": "c39",
+    "category": "fork_seed",
+    "fake_record_name": "demo_counter_fork",
+    "context_label": "portability_not_tested",
+    "fork_seed_not_tested": true,
+    "expected_success": "not_tested",
+    "expected_observation": "fork_process_seed_interaction_not_tested"
+  },
+  {
+    "case_id": "c40",
+    "category": "rand_state_serialize",
+    "fake_record_name": "test_prng_state_serialize",
+    "context_label": "portability_not_tested",
+    "rand_state_serialization_not_portable": true,
+    "expected_success": "success",
+    "expected_observation": "serialization_of_rand_state_not_portable_marker"
+  },
+  {
+    "case_id": "c41",
+    "category": "strtol_valid",
+    "fake_record_name": "example_value_strtol_42",
+    "context_label": "rand_policy",
+    "strtol_seed_valid": true,
+    "expected_success": "success",
+    "seed_parse_input": "42",
+    "expected_observation": "atoi_strtol_seed_parsing_valid"
+  },
+  {
+    "case_id": "c42",
+    "category": "strtol_trailing",
+    "fake_record_name": "example_value_strtol_junk",
+    "context_label": "rand_policy",
+    "strtol_seed_trailing_junk": true,
+    "expected_success": "error",
+    "seed_parse_input": "123abc",
+    "expected_observation": "strtol_trailing_junk_seed_rejected"
+  },
+  {
+    "case_id": "c43",
+    "category": "strtol_range",
+    "fake_record_name": "example_value_strtol_range",
+    "context_label": "rand_policy",
+    "strtol_seed_range_errno": true,
+    "expected_success": "error",
+    "seed_parse_input": "999999999999999999999",
+    "expected_observation": "strtol_range_errno_seed_rejected"
+  },
+  {
+    "case_id": "c44",
+    "category": "negative_seed_cast",
+    "fake_record_name": "demo_seed_negative",
+    "context_label": "rand_policy",
+    "negative_seed_cast_caveat": true,
+    "expected_success": "success",
+    "seed_parse_input": "-1",
+    "expected_observation": "negative_seed_cast_caveat_marker",
+    "expected_reason": "srand takes unsigned int \u2013 negative input casting caveat"
+  },
+  {
+    "case_id": "c45",
+    "category": "unsigned_seed_width",
+    "fake_record_name": "demo_seed_width",
+    "context_label": "rand_policy",
+    "unsigned_seed_width_caveat": true,
+    "expected_success": "success",
+    "expected_observation": "unsigned_seed_width_caveat_marker"
+  },
+  {
+    "case_id": "c46",
+    "category": "shuffle_modulo",
+    "fake_record_name": "sample_shuffle_modulo",
+    "seed_value": 555,
+    "draw_count": 10,
+    "context_label": "modulo_bias_caveat",
+    "shuffle_modulo_marker": true,
+    "expected_success": "success",
+    "expected_observation": "shuffle_with_rand_modulo_marker"
+  },
+  {
+    "case_id": "c47",
+    "category": "dice_roll",
+    "fake_record_name": "fake_game_roll_d6",
+    "seed_value": 13,
+    "draw_count": 20,
+    "modulo_n": 6,
+    "context_label": "modulo_bias_caveat",
+    "dice_roll_modulo_marker": true,
+    "expected_success": "success",
+    "expected_observation": "dice_roll_rand_modulo_marker"
+  },
+  {
+    "case_id": "c48",
+    "category": "security_token",
+    "fake_record_name": "fake_entropy_label_token",
+    "context_label": "crypto_not_tested",
+    "security_token_misuse_not_run": true,
+    "expected_success": "not_tested",
+    "expected_observation": "security_token_misuse_marker_not_run",
+    "expected_reason": "do NOT use rand for security tokens"
+  },
+  {
+    "case_id": "c49",
+    "category": "password_reset",
+    "fake_record_name": "fake_entropy_label_pwreset",
+    "context_label": "crypto_not_tested",
+    "password_reset_token_misuse_not_run": true,
+    "expected_success": "not_tested",
+    "expected_observation": "password_reset_token_misuse_not_run"
+  },
+  {
+    "case_id": "c50",
+    "category": "csprng_alt",
+    "fake_record_name": "fake_entropy_label_csprng",
+    "context_label": "crypto_not_tested",
+    "csprng_alternative_not_used": true,
+    "expected_success": "not_tested",
+    "expected_observation": "csprng_alternative_not_used_marker"
+  },
+  {
+    "case_id": "c51",
+    "category": "openbsd_srand",
+    "fake_record_name": "example_value_openbsd",
+    "context_label": "portability_not_tested",
+    "openbsd_srand_deterministic_not_tested": true,
+    "expected_success": "not_tested",
+    "expected_observation": "openbsd_srand_deterministic_discussion_not_tested"
+  },
+  {
+    "case_id": "c52",
+    "category": "rust_core",
+    "fake_record_name": "fictional_device_rust",
+    "context_label": "portability_not_tested",
+    "rust_core_std_not_tested": true,
+    "expected_success": "not_tested",
+    "expected_observation": "rust_core_std_embedded_comparison_not_tested",
+    "expected_reason": "HN debate: Rust core/std, embedded alternatives \u2013 not tested here"
+  },
+  {
+    "case_id": "c53",
+    "category": "double_promotion",
+    "fake_record_name": "example_value_double_promote",
+    "context_label": "portability_not_tested",
+    "double_promotion_not_tested": true,
+    "expected_success": "not_tested",
+    "expected_observation": "double_promotion_adjacent_footgun_not_tested",
+    "expected_reason": "HN comment: accidental float\u2192double promotion in embedded C \u2013 adjacent footgun, not tested"
+  },
+  {
+    "case_id": "c54",
+    "category": "cleanup_marker",
+    "fake_record_name": "demo_counter_cleanup",
+    "context_label": "rand_policy",
+    "cleanup_marker": true,
+    "expected_success": "success",
+    "expected_observation": "no_global_reset_except_srand_marker"
+  },
+  {
+    "case_id": "c55",
+    "category": "naive_negative",
+    "fake_record_name": "example_value_naive_fail",
+    "context_label": "naive_negative",
+    "naive_should_fail": true,
+    "expected_success": "error",
+    "expected_observation": "naive_rand_assumes_crypto_portable_unbiased",
+    "expected_reason": "naive method assumes rand is crypto, unbiased, portable \u2013 should fail"
+  }
+]
